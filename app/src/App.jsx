@@ -1,21 +1,30 @@
 import { useState, useRef } from 'react';
 import { Upload, FileJson, Play, Download, Settings, Loader2, X, Trash2, Database, CheckCircle2 } from 'lucide-react';
 import './App.css';
+import { embedTextsLocally } from './lib/localEmbedder';
 
 const DEFAULT_API_URL = 'http://192.168.1.236:9989/v1/embeddings';
 const DEFAULT_MODEL = 'Qwen3-Embedding-4B-GGUF';
+const DEFAULT_LOCAL_MODEL = 'Xenova/all-MiniLM-L6-v2';
 const BATCH_SIZE = 8;
+const EMBEDDING_MODES = {
+  LOCAL: 'local',
+  API: 'api'
+};
 
 function App() {
   const [files, setFiles] = useState([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [config, setConfig] = useState({
+    mode: EMBEDDING_MODES.LOCAL,
     apiUrl: DEFAULT_API_URL,
-    model: DEFAULT_MODEL
+    model: DEFAULT_MODEL,
+    localModel: DEFAULT_LOCAL_MODEL
   });
   const [showConfig, setShowConfig] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef(null);
+  const isLocalMode = config.mode === EMBEDDING_MODES.LOCAL;
 
   const handleFileSelect = (e) => {
     if (!e.target.files.length) return;
@@ -172,7 +181,9 @@ function App() {
   };
 
   const processBatch = async (texts, records, outputBuffer, config) => {
-    const embeddings = await fetchBatchEmbeddings(texts, config);
+    const embeddings = config.mode === EMBEDDING_MODES.LOCAL
+      ? await embedTextsLocally(texts, config.localModel)
+      : await fetchBatchEmbeddings(texts, config);
 
     if (!embeddings || embeddings.length !== records.length) {
       throw new Error('Embedding service returned an unexpected payload');
@@ -470,23 +481,58 @@ function App() {
               </button>
             </div>
             <div className="form-group">
-              <label>API Endpoint</label>
-              <input
-                type="text"
-                value={config.apiUrl}
-                onChange={e => setConfig({ ...config, apiUrl: e.target.value })}
-            placeholder="http://192.168.1.236:9989/v1/embeddings"
-              />
+              <label>Embedding Mode</label>
+              <div className="mode-toggle">
+                <button
+                  className={isLocalMode ? 'active' : ''}
+                  onClick={() => setConfig({ ...config, mode: EMBEDDING_MODES.LOCAL })}
+                >
+                  Local MiniLM
+                </button>
+                <button
+                  className={!isLocalMode ? 'active' : ''}
+                  onClick={() => setConfig({ ...config, mode: EMBEDDING_MODES.API })}
+                >
+                  Remote API
+                </button>
+              </div>
+              <p className="config-hint">
+                Keep the JSONL embeddings in the same vector space as the browser query model.
+              </p>
             </div>
-            <div className="form-group">
-              <label>Model Name</label>
-              <input
-                type="text"
-                value={config.model}
-                onChange={e => setConfig({ ...config, model: e.target.value })}
-            placeholder="Qwen3-Embedding-4B-GGUF"
-              />
-            </div>
+
+            {isLocalMode ? (
+              <div className="form-group">
+                <label>Local Transformer Model</label>
+                <input
+                  type="text"
+                  value={config.localModel}
+                  onChange={e => setConfig({ ...config, localModel: e.target.value })}
+                  placeholder={DEFAULT_LOCAL_MODEL}
+                />
+              </div>
+            ) : (
+              <>
+                <div className="form-group">
+                  <label>API Endpoint</label>
+                  <input
+                    type="text"
+                    value={config.apiUrl}
+                    onChange={e => setConfig({ ...config, apiUrl: e.target.value })}
+                    placeholder="http://192.168.1.236:9989/v1/embeddings"
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Model Name</label>
+                  <input
+                    type="text"
+                    value={config.model}
+                    onChange={e => setConfig({ ...config, model: e.target.value })}
+                    placeholder="Qwen3-Embedding-4B-GGUF"
+                  />
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

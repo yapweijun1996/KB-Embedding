@@ -4,8 +4,10 @@ const path = require('path');
 
 // --- CONFIGURATION ---
 // You can override these with environment variables
+const EMBEDDING_PROVIDER = (process.env.EMBEDDING_PROVIDER || 'transformers').toLowerCase();
 const API_URL = process.env.EMBEDDING_API_URL || 'http://192.168.1.236:9989/v1/embeddings';
-const MODEL_NAME = process.env.EMBEDDING_MODEL || 'Qwen3-Embedding-4B-GGUF'; 
+const MODEL_NAME = process.env.EMBEDDING_MODEL || 'Qwen3-Embedding-4B-GGUF';
+const TRANSFORMER_MODEL = process.env.TRANSFORMER_MODEL || 'Xenova/all-MiniLM-L6-v2';
 const CONCURRENCY = 1; // Keep 1 for sequential processing to avoid overwhelming local LLMs
 
 // --- PATHS ---
@@ -28,10 +30,15 @@ const outputFile = process.argv[3] || DEFAULT_OUTPUT;
 (async () => {
     console.log(`\n🚀 Starting Embedding Pre-processing`);
     console.log(`========================================`);
-    console.log(`📂 Input:  ${inputFile}`);
-    console.log(`📂 Output: ${outputFile}`);
-    console.log(`🔌 API:    ${API_URL}`);
-    console.log(`🧠 Model:  ${MODEL_NAME}`);
+    console.log(`📂 Input:   ${inputFile}`);
+    console.log(`📂 Output:  ${outputFile}`);
+    console.log(`⚙️  Mode:    ${EMBEDDING_PROVIDER === 'transformers' ? 'MiniLM (local @xenova/transformers)' : 'Remote API'}`);
+    if (EMBEDDING_PROVIDER === 'transformers') {
+        console.log(`🧠 Model:   ${TRANSFORMER_MODEL}`);
+    } else {
+        console.log(`🔌 API:     ${API_URL}`);
+        console.log(`🧠 Model:   ${MODEL_NAME}`);
+    }
     console.log(`========================================\n`);
 
     if (!fs.existsSync(inputFile)) {
@@ -110,44 +117,71 @@ const outputFile = process.argv[3] || DEFAULT_OUTPUT;
     console.log(`📄 Saved to: ${outputFile}`);
 })();
 
+let transformerPipelinePromise = null;
+
+async function getTransformerPipeline() {
+    if (!transformerPipelinePromise) {
+        transformerPipelinePromise = (async () => {
+            const { pipeline, env } = await import('@xenova/transformers');
+            env.allowLocalModels = true;
+            console.log(`\n⏬ Loading ${TRANSFORMER_MODEL} via @xenova/transformers...`);
+            const extractor = await pipeline('feature-extraction', TRANSFORMER_MODEL, {
+                quantized: true
+            });
+            console.log(`✅ Loaded ${TRANSFORMER_MODEL}\n`);
+            return extractor;
+        })();
+    }
+    return transformerPipelinePromise;
+}
+
 async function fetchEmbedding(text) {
     try {
-        // Clean text if needed (remove newlines usually helps)
-        const cleanText = text.replace(/\n/g, ' ');
-
-        const response = await fetch(API_URL, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                model: MODEL_NAME,
-                input: cleanText
-            })
-        });
-
-        if (!response.ok) {
-            const body = await response.text();
-            throw new Error(`API Error: ${response.status} ${body}`);
+        if (EMBEDDING_PROVIDER === 'transformers') {
+            return await fetchEmbeddingWithTransformers(text);
         }
-
-        const data = await response.json();
-        
-        // Handle standard OpenAI/Ollama format
-        if (data.data && data.data[0] && data.data[0].embedding) {
-            return data.data[0].embedding;
-        }
-        
-        // Handle direct array (some custom endpoints)
-        if (Array.isArray(data)) {
-            return data;
-        }
-
-        throw new Error('Unexpected response format');
-
+        return await fetchEmbeddingViaApi(text);
     } catch (error) {
         console.error(`\n❌ Embedding request failed: ${error.message}`);
-        // Retry logic could go here
         return null;
     }
+}
+
+async function fetchEmbeddingWithTransformers(text) {
+    const extractor = await getTransformerPipeline();
+    const cleanText = text.replace(/\s+/g, ' ').trim();
+    const output = await extractor(cleanText, { pooling: 'mean', normalize: true });
+    return Array.from(output.data);
+}
+
+async function fetchEmbeddingViaApi(text) {
+    const cleanText = text.replace(/\n/g, ' ');
+
+    const response = await fetch(API_URL, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            model: MODEL_NAME,
+            input: cleanText
+        })
+    });
+
+    if (!response.ok) {
+        const body = await response.text();
+        throw new Error(`API Error: ${response.status} ${body}`);
+    }
+
+    const data = await response.json();
+
+    if (data.data && data.data[0] && data.data[0].embedding) {
+        return data.data[0].embedding;
+    }
+
+    if (Array.isArray(data)) {
+        return data;
+    }
+
+    throw new Error('Unexpected response format');
 }

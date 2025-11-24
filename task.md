@@ -19,3 +19,8 @@ Script will:
 ## LM Studio Setup
 - The default embedding endpoint is now `http://192.168.1.236:9989/v1/embeddings` (LM Studio local server).
 - Default model name is `Qwen3-Embedding-4B-GGUF`; update the Settings drawer or `EMBEDDING_*` env vars to override when needed.
+
+## Embedding Space Consistency
+- Browser queries use `@xenova/transformers` + MiniLM (`Xenova/all-MiniLM-L6-v2`). Document vectors now default to the **same** model to keep cosine scores meaningful.
+- `scripts/embed_jsonl.js` defaults to `EMBEDDING_PROVIDER=transformers`. Set `EMBEDDING_PROVIDER=api` if you still want to call LM Studio/OpenAI and provide `EMBEDDING_API_URL` + `EMBEDDING_MODEL`.
+- The React UI now embeds locally by default. Switch to “Remote API” from the Settings drawer only if you want to opt out of MiniLM.

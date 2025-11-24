@@ -518,6 +518,35 @@ body {
   border-color: #6366f1;
 }
 
+.mode-toggle {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.mode-toggle button {
+  flex: 1;
+  padding: 0.5rem 0.75rem;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  color: #8b949e;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: all 0.2s;
+}
+
+.mode-toggle button.active {
+  border-color: #6366f1;
+  color: #f0f6fc;
+  background: rgba(99, 102, 241, 0.15);
+}
+
+.config-hint {
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
+  color: #8b949e;
+}
+
 /* Empty State */
 .empty {
   text-align: center;
